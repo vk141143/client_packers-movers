@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../crew_admin_backend"
+		},
+		{
+			"path": "../customer_backend"
+		}
+	],
+	"settings": {}
+}
