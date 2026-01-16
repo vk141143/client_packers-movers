@@ -1,0 +1,15 @@
+{
+  "name": "Emergency Property Clearance API",
+  "description": "FastAPI backend for UK-based Emergency Property Clearance platform",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "PYTHON_RUNTIME_VERSION": {
+      "description": "Python version",
+      "value": "3.11.10"
+    }
+  }
+}
