@@ -47,25 +47,19 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
         user_id, otp, otp_method = result
         print(f"User created: ID={user_id}, OTP={otp}, Method={otp_method}")
         
-        # Send OTP in background (non-blocking) - ALWAYS return success if user created
-        from concurrent.futures import ThreadPoolExecutor
+        # Send OTP SYNCHRONOUSLY (like crew_admin_backend)
+        try:
+            if otp_method == "email":
+                print(f"Sending OTP via email to {client.email}")
+                send_otp_email(client.email, otp)
+            else:
+                print(f"Sending OTP via SMS to {client.phone_number}")
+                send_otp_sms(client.phone_number, otp)
+        except Exception as e:
+            print(f"OTP send failed: {e}")
+            # Don't fail registration, but log the error
         
-        def send_otp_background():
-            try:
-                if otp_method == "email":
-                    print(f"Sending OTP via email to {client.email}")
-                    send_otp_email(client.email, otp)
-                else:
-                    print(f"Sending OTP via SMS to {client.phone_number}")
-                    send_otp_sms(client.phone_number, otp)
-            except Exception as e:
-                print(f"Background OTP send failed: {e}")
-        
-        # Fire and forget - don't wait for email
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(send_otp_background)
-        
-        # Return immediately
+        # Return success
         if otp_method == "email":
             return {"message": "Registration successful. OTP sent to your email."}
         else:
@@ -120,22 +114,16 @@ async def resend_otp(data: ResendOTP, db: Session = Depends(get_db)):
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
         
-        # Send OTP in background (non-blocking)
-        from concurrent.futures import ThreadPoolExecutor
+        # Send OTP SYNCHRONOUSLY
+        try:
+            if otp_method == "email":
+                send_otp_email(user.email, otp)
+            else:
+                send_otp_sms(user.phone_number, otp)
+        except Exception as e:
+            print(f"OTP send failed: {e}")
         
-        def send_otp_background():
-            try:
-                if otp_method == "email":
-                    send_otp_email(user.email, otp)
-                else:
-                    send_otp_sms(user.phone_number, otp)
-            except Exception as e:
-                print(f"Background OTP send failed: {e}")
-        
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(send_otp_background)
-        
-        # Return immediately
+        # Return success
         if otp_method == "email":
             return {"message": "OTP sent to your email"}
         else:
@@ -254,7 +242,6 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
     try:
         import random
         from datetime import datetime, timedelta
-        from concurrent.futures import ThreadPoolExecutor
         
         # Try email first
         user = Client.get_by_email(db, data.identifier)
@@ -270,18 +257,14 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
             user.otp_method = data.otp_method
             db.commit()
             
-            # Send OTP in background
-            def send_otp_background():
-                try:
-                    if data.otp_method == "email":
-                        send_otp_email(user.email, otp)
-                    else:
-                        send_otp_sms(user.phone_number, otp)
-                except Exception as e:
-                    print(f"Background forgot password OTP send failed: {e}")
-            
-            executor = ThreadPoolExecutor(max_workers=1)
-            executor.submit(send_otp_background)
+            # Send OTP SYNCHRONOUSLY
+            try:
+                if data.otp_method == "email":
+                    send_otp_email(user.email, otp)
+                else:
+                    send_otp_sms(user.phone_number, otp)
+            except Exception as e:
+                print(f"Forgot password OTP send failed: {e}")
         
         return {"message": "If account exists, OTP has been sent"}
     
