@@ -20,8 +20,17 @@ def send_otp_email(email: str, otp: str):
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_password = os.getenv("SMTP_PASSWORD", "")
     
+    print(f"[EMAIL DEBUG] SMTP_SERVER: {smtp_server}")
+    print(f"[EMAIL DEBUG] SMTP_PORT: {smtp_port}")
+    print(f"[EMAIL DEBUG] SMTP_USER: {smtp_user}")
+    print(f"[EMAIL DEBUG] SMTP_PASSWORD: {'SET' if smtp_password else 'NOT SET'}")
+    print(f"[EMAIL DEBUG] Target email: {email}")
+    print(f"[EMAIL DEBUG] OTP: {otp}")
+    
     if not smtp_user or not smtp_password:
-        print("Email not configured. Skipping OTP email.")
+        print("[EMAIL ERROR] Email not configured. Skipping OTP email.")
+        print(f"[EMAIL ERROR] SMTP_USER empty: {not smtp_user}")
+        print(f"[EMAIL ERROR] SMTP_PASSWORD empty: {not smtp_password}")
         return
     
     subject = "Verify Your Email - OTP"
@@ -42,15 +51,35 @@ def send_otp_email(email: str, otp: str):
     msg.attach(MIMEText(body, 'plain'))
     
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)  # Add 10 second timeout
+        print(f"[EMAIL DEBUG] Connecting to {smtp_server}:{smtp_port}...")
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+        print(f"[EMAIL DEBUG] Connected successfully")
+        
+        print(f"[EMAIL DEBUG] Starting TLS...")
         server.starttls()
+        print(f"[EMAIL DEBUG] TLS started")
+        
+        print(f"[EMAIL DEBUG] Logging in as {smtp_user}...")
         server.login(smtp_user, smtp_password)
+        print(f"[EMAIL DEBUG] Login successful")
+        
+        print(f"[EMAIL DEBUG] Sending message...")
         server.send_message(msg)
+        print(f"[EMAIL DEBUG] Message sent")
+        
         server.quit()
-        print(f"OTP sent to {email}")
+        print(f"[EMAIL SUCCESS] OTP sent to {email}")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[EMAIL ERROR] SMTP Authentication failed: {e}")
+        raise
+    except smtplib.SMTPException as e:
+        print(f"[EMAIL ERROR] SMTP error: {e}")
+        raise
     except Exception as e:
-        print(f"Failed to send OTP email: {e}")
-        raise  # Re-raise to let caller handle
+        print(f"[EMAIL ERROR] Failed to send OTP email: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def send_password_reset_email(email: str, reset_token: str):
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
