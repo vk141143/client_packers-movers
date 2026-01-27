@@ -30,9 +30,11 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
             password=hash_password(client.password),
             full_name=client.full_name,
             company_name=client.company_name,
+            contact_person_name=client.contact_person_name,
+            department=client.department,
             phone_number=client.phone_number,
             client_type=client.client_type,
-            address=client.address,
+            business_address=client.business_address,
             otp_method=client.otp_method
         )
         
@@ -45,21 +47,29 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
         user_id, otp, otp_method = result
         print(f"User created: ID={user_id}, OTP={otp}, Method={otp_method}")
         
-        # Send OTP (non-blocking)
-        try:
-            if otp_method == "email":
-                print(f"Sending OTP via email to {client.email}")
-                send_otp_email(client.email, otp)
-                return {"message": "Registration successful. OTP sent to your email."}
-            else:
-                print(f"Sending OTP via SMS to {client.phone_number}")
-                send_otp_sms(client.phone_number, otp)
-                return {"message": "Registration successful. OTP sent to your phone."}
-        except Exception as email_error:
-            print(f"Warning: Failed to send OTP: {email_error}")
-            import traceback
-            traceback.print_exc()
-            return {"message": f"Registration successful. Your OTP is: {otp}"}
+        # Send OTP in background (non-blocking) - ALWAYS return success if user created
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def send_otp_background():
+            try:
+                if otp_method == "email":
+                    print(f"Sending OTP via email to {client.email}")
+                    send_otp_email(client.email, otp)
+                else:
+                    print(f"Sending OTP via SMS to {client.phone_number}")
+                    send_otp_sms(client.phone_number, otp)
+            except Exception as e:
+                print(f"Background OTP send failed: {e}")
+        
+        # Fire and forget - don't wait for email
+        executor = ThreadPoolExecutor(max_workers=1)
+        executor.submit(send_otp_background)
+        
+        # Return immediately
+        if otp_method == "email":
+            return {"message": "Registration successful. OTP sent to your email."}
+        else:
+            return {"message": "Registration successful. OTP sent to your phone."}
     
     except HTTPException as http_ex:
         print(f"HTTP Exception: {http_ex.detail}")
