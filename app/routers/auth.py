@@ -190,7 +190,7 @@ async def get_client_profile(current_user: dict = Depends(get_current_user), db:
         "company_name": user.company_name,
         "phone_number": user.phone_number,
         "client_type": user.client_type,
-        "address": user.address,
+        "business_address": getattr(user, 'business_address', None),
         "is_verified": user.is_verified,
         "created_at": user.created_at
     }
@@ -199,7 +199,7 @@ async def get_client_profile(current_user: dict = Depends(get_current_user), db:
 async def update_client_profile(
     email: str = Form(None),
     phone_number: str = Form(None),
-    address: str = Form(None),
+    business_address: str = Form(None),
     profile_photo: UploadFile = File(None),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -215,8 +215,8 @@ async def update_client_profile(
         user.email = email
     if phone_number:
         user.phone_number = phone_number
-    if address:
-        user.address = address
+    if business_address:
+        user.business_address = business_address
     if profile_photo and profile_photo.filename:
         photo_url = storage.upload_client_profile_photo(profile_photo.file, str(user.id), profile_photo.filename)
         user.profile_photo = photo_url
@@ -230,8 +230,8 @@ async def update_client_profile(
         "company_name": user.company_name,
         "phone_number": user.phone_number,
         "client_type": user.client_type,
-        "address": user.address,
-        "profile_photo": user.profile_photo,
+        "business_address": getattr(user, 'business_address', None),
+        "profile_photo": getattr(user, 'profile_photo', None),
         "is_verified": user.is_verified,
         "created_at": user.created_at
     }
