@@ -187,8 +187,10 @@ async def get_client_profile(current_user: dict = Depends(get_current_user), db:
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
-        "company_name": user.company_name,
+        "organization_name": user.company_name,
         "phone_number": user.phone_number,
+        "contact_person": getattr(user, 'contact_person_name', None),
+        "department": getattr(user, 'department', None),
         "client_type": user.client_type,
         "business_address": getattr(user, 'business_address', None),
         "is_verified": user.is_verified,
@@ -197,10 +199,11 @@ async def get_client_profile(current_user: dict = Depends(get_current_user), db:
 
 @router.patch("/client/profile", tags=["Client"])
 async def update_client_profile(
-    email: str = Form(None),
+    organization_name: str = Form(None),
     phone_number: str = Form(None),
+    contact_person: str = Form(None),
+    department: str = Form(None),
     business_address: str = Form(None),
-    profile_photo: UploadFile = File(None),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -208,18 +211,16 @@ async def update_client_profile(
     if not user:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    if email:
-        existing = Client.get_by_email(db, email)
-        if existing and existing.id != user.id:
-            raise HTTPException(status_code=400, detail="Email already in use")
-        user.email = email
+    if organization_name:
+        user.company_name = organization_name
     if phone_number:
         user.phone_number = phone_number
+    if contact_person:
+        user.contact_person_name = contact_person
+    if department:
+        user.department = department
     if business_address:
         user.business_address = business_address
-    if profile_photo and profile_photo.filename:
-        photo_url = storage.upload_client_profile_photo(profile_photo.file, str(user.id), profile_photo.filename)
-        user.profile_photo = photo_url
     
     db.commit()
     db.refresh(user)
@@ -227,11 +228,12 @@ async def update_client_profile(
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
-        "company_name": user.company_name,
+        "organization_name": user.company_name,
         "phone_number": user.phone_number,
+        "contact_person": getattr(user, 'contact_person_name', None),
+        "department": getattr(user, 'department', None),
         "client_type": user.client_type,
         "business_address": getattr(user, 'business_address', None),
-        "profile_photo": getattr(user, 'profile_photo', None),
         "is_verified": user.is_verified,
         "created_at": user.created_at
     }
