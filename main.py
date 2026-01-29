@@ -51,6 +51,7 @@ app.include_router(access_difficulty.router, prefix="/api")
 app.include_router(invoice.router, prefix="/api")
 app.include_router(pricing.router, prefix="/api")
 app.include_router(payment.router, prefix="/api")
+app.include_router(payment_success.router, prefix="/api")
 
 @app.on_event("startup")
 def startup():
