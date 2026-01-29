@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.invoice import Invoice
@@ -7,68 +7,31 @@ from app.models.client import Client
 from app.models.job import Job
 from app.core.security import get_current_user
 from typing import List
+from datetime import datetime
 import os
+import io
+import random
+import tempfile
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 router = APIRouter()
-
-def generate_invoice_pdf(invoice: Invoice, client: Client, pdf_path: str):
-    """Generate a simple invoice PDF"""
-    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-    
-    c = canvas.Canvas(pdf_path, pagesize=letter)
-    width, height = letter
-    
-    # Title
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(50, height - 50, "INVOICE")
-    
-    # Invoice details
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 100, f"Invoice Number: {invoice.invoice_number}")
-    c.drawString(50, height - 120, f"Job ID: {invoice.job_id}")
-    c.drawString(50, height - 140, f"Date: {invoice.generated_at.strftime('%Y-%m-%d')}")
-    
-    # Client details
-    c.drawString(50, height - 180, "Bill To:")
-    c.drawString(50, height - 200, f"{client.full_name}")
-    c.drawString(50, height - 220, f"{client.company_name}")
-    c.drawString(50, height - 240, f"{client.email}")
-    
-    # Amount
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, height - 300, f"Total Amount: £{float(invoice.amount):.2f}")
-    
-    # Footer
-    c.setFont("Helvetica", 10)
-    c.drawString(50, 50, "Thank you for your business!")
-    
-    c.save()
 
 @router.get("/client/invoices", tags=["Client"])
 async def get_invoice_history(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Get client from database
     client = db.query(Client).filter(Client.id == current_user.get("sub")).first()
     if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     
-    # Get all invoices for this client with job details
-    invoices = db.query(Invoice).filter(
-        Invoice.client_id == client.id
-    ).order_by(Invoice.generated_at.desc()).all()
+    invoices = db.query(Invoice).filter(Invoice.client_id == client.id).order_by(Invoice.generated_at.desc()).all()
     
     invoice_list = []
     for invoice in invoices:
         job = db.query(Job).filter(Job.id == invoice.job_id).first()
         
-        # Get service type name from database
         service_type_name = "Unknown Service"
         if job and job.service_type:
             from app.models.service_type import ServiceType
@@ -87,10 +50,7 @@ async def get_invoice_history(
             "property_address": job.property_address if job else "N/A"
         })
     
-    return {
-        "total_invoices": len(invoice_list),
-        "invoices": invoice_list
-    }
+    return {"total_invoices": len(invoice_list), "invoices": invoice_list}
 
 @router.get("/client/invoices/{invoice_id}/download", tags=["Client"])
 async def download_invoice(
@@ -98,35 +58,26 @@ async def download_invoice(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from fastapi.responses import RedirectResponse
-    
     client = db.query(Client).filter(Client.id == current_user.get("sub")).first()
     if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invoice not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     
     if invoice.client_id != client.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: Invoice does not belong to you"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: Invoice does not belong to you")
     
-    # Download PDF from Utho and stream to client
+    # Get job details for breakdown
+    job = db.query(Job).filter(Job.id == invoice.job_id).first()
+    quote_amount = float(job.quote_amount) if job and job.quote_amount else float(invoice.amount)
+    deposit_amount = float(job.deposit_amount) if job and job.deposit_amount else 0.0
+    remaining_amount = quote_amount - deposit_amount
+    
+    # Download PDF from Utho storage
     if invoice.pdf_path and invoice.pdf_path.startswith("http"):
         from app.core.storage import storage
-        import io
-        from fastapi.responses import StreamingResponse
-        
-        # Download from Utho
         pdf_content = storage.download_file(invoice.pdf_path)
         if pdf_content:
             return StreamingResponse(
@@ -135,13 +86,42 @@ async def download_invoice(
                 headers={"Content-Disposition": f"attachment; filename={invoice.invoice_number}.pdf"}
             )
     
-    # If no PDF, return invoice details as JSON
-    return {
-        "invoice_id": invoice.id,
-        "invoice_number": invoice.invoice_number,
-        "job_id": invoice.job_id,
-        "amount": float(invoice.amount),
-        "status": invoice.status,
-        "generated_at": invoice.generated_at,
-        "message": "PDF not available, showing invoice details"
-    }
+    # Generate PDF on-the-fly with detailed breakdown
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, height - 50, "INVOICE")
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 100, f"Invoice Number: {invoice.invoice_number}")
+    c.drawString(50, height - 120, f"Job ID: {invoice.job_id}")
+    c.drawString(50, height - 140, f"Date: {invoice.generated_at.strftime('%Y-%m-%d')}")
+    
+    c.drawString(50, height - 180, "Bill To:")
+    c.drawString(50, height - 200, f"{client.full_name}")
+    c.drawString(50, height - 220, f"{client.company_name or ''}")
+    c.drawString(50, height - 240, f"{client.email}")
+    
+    # Payment breakdown
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 300, "Payment Details:")
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 320, f"Quote Amount: £{quote_amount:.2f}")
+    c.drawString(50, height - 340, f"Deposit Paid: £{deposit_amount:.2f}")
+    c.drawString(50, height - 360, f"Remaining Paid: £{remaining_amount:.2f}")
+    
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, height - 400, f"Total Amount: £{quote_amount:.2f}")
+    
+    c.setFont("Helvetica", 10)
+    c.drawString(50, 50, "Thank you for your business!")
+    c.save()
+    
+    buffer.seek(0)
+    return StreamingResponse(
+        io.BytesIO(buffer.read()),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={invoice.invoice_number}.pdf"}
+    )

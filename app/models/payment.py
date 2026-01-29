@@ -9,11 +9,13 @@ class Payment(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     job_id = Column(String, nullable=False)
     client_id = Column(String, nullable=False)
-    payment_type = Column(String, nullable=False)  # deposit, final
+    payment_type = Column(String, nullable=False)  # deposit, remaining
     amount = Column(Float, nullable=False)
-    payment_status = Column(String, default="pending")  # pending, completed, failed, refunded
-    payment_method = Column(String, nullable=True)  # card, bank_transfer, etc
-    transaction_id = Column(String, nullable=True)
+    currency = Column(String, default="gbp")
+    payment_status = Column(String, default="pending")  # pending, succeeded, failed, refunded
+    payment_method = Column(String, nullable=True)  # stripe, cash, etc
+    transaction_id = Column(String, nullable=True)  # Stripe payment intent ID
+    stripe_payment_intent_id = Column(String, nullable=True)  # Alias for transaction_id
     paid_at = Column(DateTime, nullable=True)
     refunded_at = Column(DateTime, nullable=True)
     refund_amount = Column(Float, nullable=True)

@@ -489,7 +489,7 @@ async def get_job_history(
         deposit_payment = db.query(Payment).filter(
             Payment.job_id == job.id,
             Payment.payment_type == "deposit",
-            Payment.payment_status == "completed"
+            Payment.payment_status == "succeeded"
         ).first()
         
         # Determine status badge
@@ -529,8 +529,8 @@ async def get_job_history(
             {"name": "Request", "completed": True},
             {"name": "Quote", "completed": job.status not in ["job_created"]},
             {"name": "Payment", "completed": deposit_payment is not None},
-            {"name": "Crew", "completed": job.status in ["crew_assigned", "crew_arrived", "before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_completed"]},
-            {"name": "Work", "completed": job.status in ["before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_completed"]},
+            {"name": "Crew", "completed": job.assigned_crew_id is not None},
+            {"name": "Work", "completed": job.status in ["before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_verified", "payment_pending", "job_completed"]},
             {"name": "Complete", "completed": job.status == "job_completed"}
         ]
         
@@ -621,22 +621,22 @@ async def get_job_tracking_details(
         {
             "step": 1,
             "title": "Crew Assigned",
-            "completed": job.status in ["crew_assigned", "crew_arrived", "before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_completed"]
+            "completed": job.assigned_crew_id is not None
         },
         {
             "step": 2,
             "title": "Arrived at Property",
-            "completed": job.status in ["crew_arrived", "before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_completed"]
+            "completed": job.status in ["crew_arrived", "before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_verified", "payment_pending", "job_completed"]
         },
         {
             "step": 3,
             "title": "Work Started",
-            "completed": job.status in ["before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_completed"]
+            "completed": job.status in ["before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_verified", "payment_pending", "job_completed"]
         },
         {
             "step": 4,
             "title": "Work Completed",
-            "completed": job.status in ["work_completed", "job_completed"]
+            "completed": job.status in ["work_completed", "job_verified", "payment_pending", "job_completed"]
         }
     ]
     
@@ -682,10 +682,10 @@ async def get_payment_requests(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    # Get jobs with work_completed status (awaiting final payment)
+    # Get jobs with payment_pending status (admin sent remaining amount request)
     jobs = db.query(Job).filter(
         Job.client_id == str(client.id),
-        Job.status == "work_completed"
+        Job.status == "payment_pending"
     ).order_by(Job.updated_at.desc()).all()
     
     result = []

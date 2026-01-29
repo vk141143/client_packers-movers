@@ -13,6 +13,7 @@ class Invoice(Base):
     job_id = Column(String, nullable=False)
     client_id = Column(UUID(as_uuid=True), ForeignKey('clients.id'), nullable=False)
     invoice_number = Column(String, unique=True, nullable=False)
+    generated_by = Column(String, nullable=False, default="system")
     pdf_path = Column(String, nullable=True)
     amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String, default="generated")
