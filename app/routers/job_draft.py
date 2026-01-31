@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.core.security import verify_token
+from app.core.storage import storage
 from app.models.job import Job
 from app.models.urgency_level import UrgencyLevel
 from app.schemas.job_draft import JobResponse, ConfirmJob
 from app.schemas.auth import MessageResponse
 from typing import List, Optional
 from datetime import datetime
+import json
 
 router = APIRouter(prefix="/api/jobs", tags=["Job Draft"])
 security = HTTPBearer()
@@ -29,7 +31,6 @@ async def get_job_draft(
             id=job.id,
             property_address=job.property_address,
             date=job.preferred_date,
-            time=job.preferred_time,
             service_id=job.service_type,
             urgency_level_id=job.urgency_level,
             property_size=job.property_size,
@@ -55,7 +56,6 @@ async def get_all_draft_jobs(
                 id=job.id,
                 property_address=job.property_address,
                 date=job.preferred_date,
-                time=job.preferred_time,
                 service_id=job.service_type,
                 urgency_level_id=job.urgency_level,
                 property_size=job.property_size,
@@ -74,14 +74,13 @@ async def get_all_draft_jobs(
 async def create_job_draft(
     property_address: Optional[str] = Form(None),
     preferred_date: Optional[str] = Form(None),
-    preferred_time: Optional[str] = Form(None),
     service_type: Optional[str] = Form(None),
     urgency_level: Optional[str] = Form(None),
     property_size: Optional[str] = Form(None),
     van_loads: Optional[int] = Form(None),
     waste_types: Optional[str] = Form(None),
     furniture_items: Optional[int] = Form(None),
-    additional_information: Optional[str] = Form(None),
+    property_photos: List[UploadFile] = File(None),
     db: Session = Depends(get_db)
 ):
     """Create job draft without authentication - for price estimation"""
@@ -91,28 +90,47 @@ async def create_job_draft(
         if not urgency_level_obj:
             raise HTTPException(status_code=400, detail="Invalid urgency_level")
         
+        # Create job first to get job_id
         job = Job(
             property_address=property_address,
             preferred_date=preferred_date,
-            preferred_time=preferred_time,
+            preferred_time="",
             service_type=service_type,
             urgency_level=urgency_level,
             property_size=property_size,
             van_loads=van_loads,
             waste_types=waste_types,
             furniture_items=furniture_items,
-            additional_information=additional_information,
             status='pending'
         )
         db.add(job)
         db.commit()
         db.refresh(job)
         
+        # Upload property photos if provided
+        photo_urls = []
+        if property_photos:
+            for photo in property_photos:
+                if photo.filename:
+                    file_content = await photo.read()
+                    photo_url = storage.upload_file(
+                        file_content,
+                        f"job_drafts/{job.id}",
+                        photo.filename
+                    )
+                    if photo_url:
+                        photo_urls.append(photo_url)
+        
+        # Update job with photo URLs
+        if photo_urls:
+            job.property_photos = json.dumps(photo_urls)
+            db.commit()
+            db.refresh(job)
+        
         return JobResponse(
             id=job.id,
             property_address=job.property_address,
             date=job.preferred_date,
-            time=job.preferred_time,
             service_id=job.service_type,
             urgency_level_id=job.urgency_level,
             property_size=job.property_size,

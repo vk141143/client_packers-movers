@@ -17,7 +17,6 @@ class JobResponse(BaseModel):
     id: str
     property_address: str
     date: str
-    time: str
     service_id: int
     urgency_level_id: str
     property_size: Optional[str] = None
