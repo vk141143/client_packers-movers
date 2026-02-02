@@ -58,6 +58,11 @@ async def download_invoice(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    from app.models.payment import Payment
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Table, TableStyle
+    
     client = db.query(Client).filter(Client.id == current_user.get("sub")).first()
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
@@ -69,54 +74,118 @@ async def download_invoice(
     if invoice.client_id != client.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: Invoice does not belong to you")
     
-    # Get job details for breakdown
+    # Get job and payment details
     job = db.query(Job).filter(Job.id == invoice.job_id).first()
     quote_amount = float(job.quote_amount) if job and job.quote_amount else float(invoice.amount)
     deposit_amount = float(job.deposit_amount) if job and job.deposit_amount else 0.0
     remaining_amount = quote_amount - deposit_amount
     
-    # Download PDF from Utho storage
-    if invoice.pdf_path and invoice.pdf_path.startswith("http"):
-        from app.core.storage import storage
-        pdf_content = storage.download_file(invoice.pdf_path)
-        if pdf_content:
-            return StreamingResponse(
-                io.BytesIO(pdf_content),
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename={invoice.invoice_number}.pdf"}
-            )
+    # Get payment dates
+    deposit_payment = db.query(Payment).filter(
+        Payment.job_id == invoice.job_id,
+        Payment.payment_type == "deposit",
+        Payment.payment_status == "succeeded"
+    ).first()
     
-    # Generate PDF on-the-fly with detailed breakdown
+    remaining_payment = db.query(Payment).filter(
+        Payment.job_id == invoice.job_id,
+        Payment.payment_type == "remaining",
+        Payment.payment_status == "succeeded"
+    ).first()
+    
+    deposit_date = deposit_payment.paid_at.strftime("%d %b %Y") if deposit_payment and deposit_payment.paid_at else "N/A"
+    remaining_date = remaining_payment.paid_at.strftime("%d %b %Y") if remaining_payment and remaining_payment.paid_at else "N/A"
+    
+    # Generate PDF
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(50, height - 50, "INVOICE")
-    
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 100, f"Invoice Number: {invoice.invoice_number}")
-    c.drawString(50, height - 120, f"Job ID: {invoice.job_id}")
-    c.drawString(50, height - 140, f"Date: {invoice.generated_at.strftime('%Y-%m-%d')}")
-    
-    c.drawString(50, height - 180, "Bill To:")
-    c.drawString(50, height - 200, f"{client.full_name}")
-    c.drawString(50, height - 220, f"{client.company_name or ''}")
-    c.drawString(50, height - 240, f"{client.email}")
-    
-    # Payment breakdown
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, height - 300, "Payment Details:")
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 320, f"Quote Amount: £{quote_amount:.2f}")
-    c.drawString(50, height - 340, f"Deposit Paid: £{deposit_amount:.2f}")
-    c.drawString(50, height - 360, f"Remaining Paid: £{remaining_amount:.2f}")
-    
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, height - 400, f"Total Amount: £{quote_amount:.2f}")
-    
+    # Company Header
+    c.setFont("Helvetica-Bold", 24)
+    c.drawString(50, height - 50, "VoidWorks Group")
     c.setFont("Helvetica", 10)
-    c.drawString(50, 50, "Thank you for your business!")
+    c.drawString(50, height - 70, "Emergency Property Clearance Services")
+    c.drawString(50, height - 85, "London, United Kingdom")
+    c.drawString(50, height - 100, "Email: info@voidworksgroup.co.uk")
+    
+    # Invoice Title
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(400, height - 50, "INVOICE")
+    c.setFont("Helvetica", 10)
+    c.drawString(400, height - 70, f"Invoice #: {invoice.invoice_number}")
+    c.drawString(400, height - 85, f"Date: {invoice.generated_at.strftime('%d %b %Y')}")
+    c.drawString(400, height - 100, f"Job ID: {invoice.job_id[:8]}")
+    
+    # Line separator
+    c.setStrokeColor(colors.grey)
+    c.line(50, height - 120, width - 50, height - 120)
+    
+    # Bill To Section
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 150, "BILL TO:")
+    c.setFont("Helvetica", 10)
+    c.drawString(50, height - 170, f"Name: {client.full_name}")
+    if client.company_name:
+        c.drawString(50, height - 185, f"Company: {client.company_name}")
+        c.drawString(50, height - 200, f"Email: {client.email}")
+        y_pos = height - 215
+    else:
+        c.drawString(50, height - 185, f"Email: {client.email}")
+        y_pos = height - 200
+    
+    if job:
+        c.drawString(50, y_pos, f"Property: {job.property_address}")
+        y_pos -= 15
+    
+    # Payment Details Table
+    y_pos -= 40
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y_pos, "PAYMENT DETAILS")
+    
+    y_pos -= 30
+    
+    # Table headers
+    table_data = [
+        ["Description", "Date", "Amount"],
+        ["Deposit Payment", deposit_date, f"£{deposit_amount:.2f}"],
+        ["Remaining Payment", remaining_date, f"£{remaining_amount:.2f}"],
+        ["", "Total", f"£{quote_amount:.2f}"]
+    ]
+    
+    # Draw table manually
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(50, y_pos, "Description")
+    c.drawString(300, y_pos, "Date")
+    c.drawString(450, y_pos, "Amount")
+    
+    c.line(50, y_pos - 5, width - 50, y_pos - 5)
+    
+    y_pos -= 20
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y_pos, "Deposit Payment")
+    c.drawString(300, y_pos, deposit_date)
+    c.drawString(450, y_pos, f"£{deposit_amount:.2f}")
+    
+    y_pos -= 20
+    c.drawString(50, y_pos, "Remaining Payment")
+    c.drawString(300, y_pos, remaining_date)
+    c.drawString(450, y_pos, f"£{remaining_amount:.2f}")
+    
+    y_pos -= 5
+    c.line(50, y_pos, width - 50, y_pos)
+    
+    y_pos -= 20
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(300, y_pos, "TOTAL PAID:")
+    c.drawString(450, y_pos, f"£{quote_amount:.2f}")
+    
+    # Footer
+    c.setFont("Helvetica", 9)
+    c.drawString(50, 80, "Payment Status: PAID IN FULL")
+    c.drawString(50, 65, "Thank you for your business!")
+    c.drawString(50, 50, "For any queries, please contact us at info@voidworksgroup.co.uk")
+    
     c.save()
     
     buffer.seek(0)
