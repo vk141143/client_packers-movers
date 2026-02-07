@@ -76,8 +76,13 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
 
 @router.post("/verify-otp", response_model=Token, summary="Verify Registration OTP", tags=["Authentication"])
 async def verify_otp(data: VerifyOTP, db: Session = Depends(get_db)):
+    print(f"Verify OTP request - Identifier: {data.identifier}, OTP: {data.otp}")
+    
     if not Client.verify_otp(db, data.identifier, data.otp):
+        print(f"OTP verification failed for: {data.identifier}")
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    
+    print(f"OTP verified successfully for: {data.identifier}")
     
     # Try email first
     user = Client.get_by_email(db, data.identifier)
@@ -85,6 +90,12 @@ async def verify_otp(data: VerifyOTP, db: Session = Depends(get_db)):
     # If not found, try phone
     if not user:
         user = db.query(Client).filter(Client.phone_number == data.identifier).first()
+    
+    if not user:
+        print(f"User not found after verification: {data.identifier}")
+        raise HTTPException(status_code=400, detail="User not found")
+    
+    print(f"Generating tokens for user: {user.email}")
     
     access_token = create_access_token(
         data={"sub": str(user.id), "role": "client"}
@@ -245,6 +256,8 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
         import random
         from datetime import datetime, timedelta
         
+        print(f"Forgot password request - Identifier: {data.identifier}, Method: {data.otp_method}")
+        
         # Try email first
         user = Client.get_by_email(db, data.identifier)
         
@@ -252,21 +265,37 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
         if not user:
             user = db.query(Client).filter(Client.phone_number == data.identifier).first()
         
-        if user and user.is_verified:
-            otp = str(random.randint(1000, 9999))
-            user.reset_otp = otp
-            user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=5)
+        if not user:
+            print(f"User not found for identifier: {data.identifier}")
+        elif not user.is_verified:
+            print(f"User found but not verified: {data.identifier}")
+        elif user and user.is_verified:
+            print(f"User found and verified: {user.email}")
             user.otp_method = data.otp_method
-            db.commit()
             
-            # Send OTP SYNCHRONOUSLY
-            try:
-                if data.otp_method == "email":
+            # For phone OTP, use Twilio (no DB storage)
+            if data.otp_method == "phone":
+                print(f"Sending phone OTP to: {user.phone_number}")
+                user.reset_otp = None
+                user.reset_otp_expiry = None
+                db.commit()
+                try:
+                    result = send_otp_sms(user.phone_number)
+                    print(f"Phone OTP send result: {result}")
+                except Exception as e:
+                    print(f"Forgot password SMS OTP send failed: {e}")
+            else:
+                # For email OTP, store in DB
+                otp = str(random.randint(100000, 999999))  # 6-digit OTP
+                print(f"Generated email OTP: {otp} for {user.email}")
+                user.reset_otp = otp
+                user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=5)
+                db.commit()
+                try:
                     send_otp_email(user.email, otp)
-                elif data.otp_method == "phone":
-                    send_otp_sms(user.phone_number, otp)
-            except Exception as e:
-                print(f"Forgot password OTP send failed: {e}")
+                    print(f"Email OTP sent to: {user.email}")
+                except Exception as e:
+                    print(f"Forgot password email OTP send failed: {e}")
         
         return {"message": "If account exists, OTP has been sent"}
     
@@ -278,6 +307,7 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
 async def verify_forgot_otp(data: VerifyForgotOTP, db: Session = Depends(get_db)):
     import secrets
     from datetime import datetime, timedelta
+    from app.core.sms import verify_otp_sms
     
     # Try email first
     user = Client.get_by_email(db, data.identifier)
@@ -289,11 +319,18 @@ async def verify_forgot_otp(data: VerifyForgotOTP, db: Session = Depends(get_db)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid OTP")
     
-    if not user.reset_otp or user.reset_otp != data.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
-    
-    if user.reset_otp_expiry < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="OTP expired")
+    # Verify based on OTP method
+    if user.otp_method == "phone":
+        # Verify with Twilio
+        if not verify_otp_sms(user.phone_number, data.otp):
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+    else:
+        # Verify from database for email
+        if not user.reset_otp or user.reset_otp != data.otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+        if user.reset_otp_expiry < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="OTP expired")
     
     reset_token = secrets.token_urlsafe(32)
     user.reset_token = reset_token
@@ -304,6 +341,48 @@ async def verify_forgot_otp(data: VerifyForgotOTP, db: Session = Depends(get_db)
     db.commit()
     
     return {"message": f"OTP verified. Reset token: {reset_token}"}
+
+@router.post("/resend-forgot-otp", response_model=MessageResponse, tags=["Authentication"])
+async def resend_forgot_otp(data: ForgotPassword, db: Session = Depends(get_db)):
+    try:
+        import random
+        from datetime import datetime, timedelta
+        
+        # Try email first
+        user = Client.get_by_email(db, data.identifier)
+        
+        # If not found, try phone
+        if not user:
+            user = db.query(Client).filter(Client.phone_number == data.identifier).first()
+        
+        if user:
+            user.otp_method = data.otp_method
+            
+            # For phone OTP, use Twilio (no DB storage)
+            if data.otp_method == "phone":
+                user.reset_otp = None
+                user.reset_otp_expiry = None
+                db.commit()
+                try:
+                    send_otp_sms(user.phone_number)
+                except Exception as e:
+                    print(f"Resend forgot password SMS OTP failed: {e}")
+            else:
+                # For email OTP, store in DB
+                otp = str(random.randint(100000, 999999))  # 6-digit OTP
+                user.reset_otp = otp
+                user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=5)
+                db.commit()
+                try:
+                    send_otp_email(user.email, otp)
+                except Exception as e:
+                    print(f"Resend forgot password email OTP failed: {e}")
+        
+        return {"message": "If account exists, OTP has been resent"}
+    
+    except Exception as e:
+        print(f"Resend forgot password OTP error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to resend OTP: {str(e)}")
 
 @router.post("/reset-password", response_model=MessageResponse, tags=["Authentication"])
 async def reset_password(data: ResetPassword, db: Session = Depends(get_db)):

@@ -39,8 +39,14 @@ class Client(Base):
     
     @staticmethod
     def create(db, email: str, password: str, full_name: str = None, company_name: str = None, contact_person_name: str = None, department: str = None, phone_number: str = None, client_type: str = None, business_address: str = None, otp_method: str = "email"):
-        otp = str(random.randint(1000, 9999))
-        otp_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
+        # For phone OTP, don't store OTP in DB (Twilio generates it)
+        if otp_method == "phone":
+            otp = None
+            otp_expiry = None
+        else:
+            # For email OTP, generate and store in DB
+            otp = str(random.randint(100000, 999999))  # 6-digit OTP
+            otp_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         
         user = Client(
             email=email,
@@ -70,6 +76,8 @@ class Client(Base):
     
     @staticmethod
     def verify_otp(db, identifier: str, otp: str):
+        print(f"[verify_otp] Checking identifier: {identifier}, OTP: {otp}")
+        
         # Try email first
         user = db.query(Client).filter(Client.email == identifier).first()
         
@@ -78,15 +86,37 @@ class Client(Base):
             user = db.query(Client).filter(Client.phone_number == identifier).first()
         
         if not user:
+            print(f"[verify_otp] User not found")
             return False
         
+        print(f"[verify_otp] User found: {user.email}, OTP method: {user.otp_method}")
+        print(f"[verify_otp] Stored OTP: {user.otp}, Expiry: {user.otp_expiry}")
+        
+        # If phone OTP, verify with Twilio
+        if user.otp_method == "phone":
+            print(f"[verify_otp] Using Twilio verification for phone: {user.phone_number}")
+            from app.core.sms import verify_otp_sms
+            if verify_otp_sms(user.phone_number, otp):
+                user.is_verified = True
+                user.otp = None
+                user.otp_expiry = None
+                db.commit()
+                print(f"[verify_otp] Phone OTP verified successfully")
+                return True
+            print(f"[verify_otp] Phone OTP verification failed")
+            return False
+        
+        # Email OTP - verify from database
+        print(f"[verify_otp] Using database verification for email")
         if user.otp == otp and datetime.now(timezone.utc).replace(tzinfo=None) < user.otp_expiry:
             user.is_verified = True
             user.otp = None
             user.otp_expiry = None
             db.commit()
+            print(f"[verify_otp] Email OTP verified successfully")
             return True
         
+        print(f"[verify_otp] Email OTP verification failed - OTP mismatch or expired")
         return False
     
     @staticmethod
@@ -104,8 +134,14 @@ class Client(Base):
         if user.is_verified:
             return None, None
         
-        otp = str(random.randint(1000, 9999))
-        otp_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
+        # For phone OTP, don't store OTP in DB (Twilio generates it)
+        if otp_method == "phone":
+            otp = None
+            otp_expiry = None
+        else:
+            # For email OTP, generate and store in DB
+            otp = str(random.randint(100000, 999999))  # 6-digit OTP
+            otp_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         
         user.otp = otp
         user.otp_expiry = otp_expiry
