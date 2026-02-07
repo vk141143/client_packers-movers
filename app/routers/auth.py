@@ -52,7 +52,7 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
             if otp_method == "email":
                 print(f"Sending OTP via email to {client.email}")
                 send_otp_email(client.email, otp)
-            else:
+            elif otp_method == "phone":
                 print(f"Sending OTP via SMS to {client.phone_number}")
                 send_otp_sms(client.phone_number, otp)
         except Exception as e:
@@ -118,7 +118,7 @@ async def resend_otp(data: ResendOTP, db: Session = Depends(get_db)):
         try:
             if otp_method == "email":
                 send_otp_email(user.email, otp)
-            else:
+            elif otp_method == "phone":
                 send_otp_sms(user.phone_number, otp)
         except Exception as e:
             print(f"OTP send failed: {e}")
@@ -263,7 +263,7 @@ async def forgot_password(data: ForgotPassword, db: Session = Depends(get_db)):
             try:
                 if data.otp_method == "email":
                     send_otp_email(user.email, otp)
-                else:
+                elif data.otp_method == "phone":
                     send_otp_sms(user.phone_number, otp)
             except Exception as e:
                 print(f"Forgot password OTP send failed: {e}")
