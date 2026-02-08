@@ -23,6 +23,13 @@ async def register_client(client: ClientRegister, db: Session = Depends(get_db))
             print(f"Email already exists: {client.email}")
             raise HTTPException(status_code=400, detail="Email already registered")
         
+        # Check for duplicate phone number
+        if client.phone_number:
+            existing_phone = db.query(Client).filter(Client.phone_number == client.phone_number).first()
+            if existing_phone:
+                print(f"Phone number already exists: {client.phone_number}")
+                raise HTTPException(status_code=400, detail="Phone number already registered")
+        
         print(f"Creating client record...")
         result = Client.create(
             db=db,
