@@ -14,12 +14,10 @@ class Client(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     full_name = Column(String)
-    company_name = Column(String)
-    contact_person_name = Column(String)
-    department = Column(String)
     phone_number = Column(String)
     client_type = Column(String)
     business_address = Column(String)
+    profile_photo = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
     otp = Column(String)
     otp_expiry = Column(DateTime)
@@ -38,7 +36,7 @@ class Client(Base):
         return db.query(Client).filter(Client.email == email).first()
     
     @staticmethod
-    def create(db, email: str, password: str, full_name: str = None, company_name: str = None, contact_person_name: str = None, department: str = None, phone_number: str = None, client_type: str = None, business_address: str = None, otp_method: str = "email"):
+    def create(db, email: str, password: str, full_name: str = None, phone_number: str = None, client_type: str = None, business_address: str = None, otp_method: str = "email"):
         # For phone OTP, don't store OTP in DB (Twilio generates it)
         if otp_method == "phone":
             otp = None
@@ -52,9 +50,6 @@ class Client(Base):
             email=email,
             password=password,
             full_name=full_name,
-            company_name=company_name,
-            contact_person_name=contact_person_name,
-            department=department,
             phone_number=phone_number,
             client_type=client_type,
             business_address=business_address,

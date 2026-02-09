@@ -289,13 +289,18 @@ async def get_client_quotes(
         service = db.query(ServiceType).filter(ServiceType.id == job.service_type).first()
         service_type_name = service.name if service else "Unknown"
         
+        quote_amount = job.quote_amount if job.quote_amount else 0.0
+        deposit_amount = job.deposit_amount if job.deposit_amount else 0.0
+        remaining_amount = quote_amount - deposit_amount
+        
         result.append({
             "job_id": job.id,
             "property_address": job.property_address,
             "service_type": service_type_name,
             "preferred_date": job.preferred_date if job.preferred_date else "",
-            "quote_amount": job.quote_amount if job.quote_amount else 0.0,
-            "deposit_amount": job.deposit_amount if job.deposit_amount else 0.0,
+            "quote_amount": quote_amount,
+            "deposit_amount": deposit_amount,
+            "remaining_amount": remaining_amount,
             "quote_notes": job.quote_notes if job.quote_notes else "",
             "status": "Awaiting Approval" if job.status == "quote_sent" else job.status,
             "created_at": job.created_at.isoformat() if job.created_at else ""
@@ -645,7 +650,7 @@ async def get_job_tracking_details(
     if job.assigned_crew_id:
         try:
             crew_result = db.execute(
-                text("SELECT full_name, phone_number, email FROM crew WHERE id = :id"),
+                text("SELECT full_name, phone_number, email, vehicle_number FROM crew WHERE id = :id"),
                 {"id": job.assigned_crew_id}
             ).fetchone()
             
@@ -660,6 +665,7 @@ async def get_job_tracking_details(
                     "name": crew_result[0],
                     "phone_number": crew_result[1],
                     "email": crew_result[2],
+                    "vehicle_number": crew_result[3],
                     "rating": round(float(rating_result[0]), 1) if rating_result and rating_result[0] else None
                 }
         except Exception as e:
@@ -701,6 +707,90 @@ async def get_payment_requests(
             "deposit_paid": deposit_paid,
             "remaining_amount": remaining_amount,
             "completed_at": job.updated_at.isoformat() if job.updated_at else ""
+        })
+    
+    return result
+
+@router.get("/client/cancelled-jobs", tags=["Client"], summary="Get All Cancelled Jobs")
+async def get_cancelled_jobs(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    client = db.query(Client).filter(Client.id == current_user.get("sub")).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    jobs = db.query(Job).filter(
+        Job.client_id == str(client.id),
+        Job.status.in_(["cancelled", "quote_rejected"])
+    ).order_by(Job.updated_at.desc()).all()
+    
+    result = []
+    for job in jobs:
+        from app.models.service_type import ServiceType
+        
+        service = db.query(ServiceType).filter(ServiceType.id == job.service_type).first()
+        service_name = service.name if service else "Unknown"
+        
+        # Determine reason and type
+        if job.status == "cancelled":
+            reason = job.cancellation_reason if job.cancellation_reason else ""
+            status_type = "Cancelled"
+        else:  # quote_rejected
+            reason = job.decline_reason if hasattr(job, 'decline_reason') and job.decline_reason else ""
+            status_type = "Quote Declined"
+        
+        result.append({
+            "job_id": job.id,
+            "service_type": service_name,
+            "property_address": job.property_address,
+            "preferred_date": job.preferred_date if job.preferred_date else "",
+            "cancellation_reason": reason,
+            "cancelled_at": job.updated_at.strftime("%d %b %Y") if job.updated_at else "",
+            "quote_amount": job.quote_amount if job.quote_amount else 0.0,
+            "status_type": status_type
+        })
+    
+    return result
+
+@router.get("/client/accepted-quotes", tags=["Client"], summary="Get All Accepted Quotes")
+async def get_accepted_quotes(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    client = db.query(Client).filter(Client.id == current_user.get("sub")).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    jobs = db.query(Job).filter(
+        Job.client_id == str(client.id),
+        Job.status == "quote_accepted"
+    ).order_by(Job.updated_at.desc()).all()
+    
+    result = []
+    for job in jobs:
+        from app.models.service_type import ServiceType
+        from app.models.payment import Payment
+        
+        service = db.query(ServiceType).filter(ServiceType.id == job.service_type).first()
+        service_name = service.name if service else "Unknown"
+        
+        # Check deposit payment status
+        deposit_payment = db.query(Payment).filter(
+            Payment.job_id == job.id,
+            Payment.payment_type == "deposit",
+            Payment.payment_status == "succeeded"
+        ).first()
+        
+        result.append({
+            "job_id": job.id,
+            "service_type": service_name,
+            "property_address": job.property_address,
+            "preferred_date": job.preferred_date if job.preferred_date else "",
+            "quote_amount": job.quote_amount if job.quote_amount else 0.0,
+            "deposit_amount": job.deposit_amount if job.deposit_amount else 0.0,
+            "deposit_paid": deposit_payment is not None,
+            "accepted_at": job.updated_at.strftime("%d %b %Y") if job.updated_at else ""
         })
     
     return result

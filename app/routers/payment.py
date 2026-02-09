@@ -324,19 +324,18 @@ async def confirm_remaining_payment(
                     
                     c.drawString(50, height - 180, "Bill To:")
                     c.drawString(50, height - 200, f"{client.full_name}")
-                    c.drawString(50, height - 220, f"{client.company_name or ''}")
-                    c.drawString(50, height - 240, f"{client.email}")
+                    c.drawString(50, height - 220, f"{client.email}")
                     
                     # Payment breakdown
                     c.setFont("Helvetica-Bold", 12)
-                    c.drawString(50, height - 300, "Payment Details:")
+                    c.drawString(50, height - 280, "Payment Details:")
                     c.setFont("Helvetica", 12)
-                    c.drawString(50, height - 320, f"Quote Amount: £{float(quote_amount):.2f}")
-                    c.drawString(50, height - 340, f"Deposit Paid: £{float(deposit_amount):.2f}")
-                    c.drawString(50, height - 360, f"Remaining Paid: £{remaining_amount:.2f}")
+                    c.drawString(50, height - 300, f"Quote Amount: £{float(quote_amount):.2f}")
+                    c.drawString(50, height - 320, f"Deposit Paid: £{float(deposit_amount):.2f}")
+                    c.drawString(50, height - 340, f"Remaining Paid: £{remaining_amount:.2f}")
                     
                     c.setFont("Helvetica-Bold", 14)
-                    c.drawString(50, height - 400, f"Total Amount: £{float(quote_amount):.2f}")
+                    c.drawString(50, height - 380, f"Total Amount: £{float(quote_amount):.2f}")
                     
                     c.setFont("Helvetica", 10)
                     c.drawString(50, 50, "Thank you for your business!")
@@ -415,6 +414,7 @@ async def get_all_payments(
                 j.property_address,
                 j.service_type,
                 j.status,
+                j.quote_amount,
                 j.deposit_amount,
                 j.remaining_amount,
                 j.created_at
@@ -443,7 +443,7 @@ async def get_all_payments(
             # Determine payment status
             job_status = r[3]
             if job_status == "quote_accepted":
-                payment_status = "Deposit Payment"
+                payment_status = "Deposit Payment Pending"
             elif job_status == "deposit_paid":
                 payment_status = "Deposit Paid"
             elif job_status == "job_completed":
@@ -451,10 +451,17 @@ async def get_all_payments(
             else:
                 payment_status = "Quote Accepted"
             
+            quote_amount = float(r[4]) if r[4] else 0.0
+            deposit_amount = float(r[5]) if r[5] else 0.0
+            remaining_amount = float(r[6]) if r[6] else (quote_amount - deposit_amount)
+            
             payments.append({
                 "job_id": r[0],
                 "property_address": r[1],
                 "service_type": service_type_name,
+                "quote_amount": quote_amount,
+                "deposit_amount": deposit_amount,
+                "remaining_amount": remaining_amount,
                 "status": payment_status
             })
         

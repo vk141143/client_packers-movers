@@ -7,9 +7,6 @@ class ClientRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    company_name: str
-    contact_person_name: str
-    department: str
     phone_number: str
     client_type: str
     business_address: str

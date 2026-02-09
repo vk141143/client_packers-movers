@@ -80,7 +80,7 @@ async def create_job_draft(
     van_loads: Optional[int] = Form(None),
     waste_types: Optional[str] = Form(None),
     furniture_items: Optional[int] = Form(None),
-    property_photos: List[UploadFile] = File(None),
+    property_photos: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db)
 ):
     """Create job draft without authentication - for price estimation"""
@@ -111,7 +111,7 @@ async def create_job_draft(
         photo_urls = []
         if property_photos:
             for photo in property_photos:
-                if photo.filename:
+                if photo and photo.filename:
                     file_content = await photo.read()
                     photo_url = storage.upload_file(
                         file_content,
