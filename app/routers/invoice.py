@@ -126,16 +126,11 @@ async def download_invoice(
     c.drawString(50, height - 150, "BILL TO:")
     c.setFont("Helvetica", 10)
     c.drawString(50, height - 170, f"Name: {client.full_name}")
-    if client.company_name:
-        c.drawString(50, height - 185, f"Company: {client.company_name}")
-        c.drawString(50, height - 200, f"Email: {client.email}")
-        y_pos = height - 215
-    else:
-        c.drawString(50, height - 185, f"Email: {client.email}")
-        y_pos = height - 200
+    c.drawString(50, height - 185, f"Email: {client.email}")
+    y_pos = height - 200
     
     if job:
-        c.drawString(50, y_pos, f"Property: {job.property_address}")
+        c.drawString(50, y_pos, f"Property Address: {job.property_address}")
         y_pos -= 15
     
     # Payment Details Table

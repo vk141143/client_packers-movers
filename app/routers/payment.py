@@ -420,7 +420,7 @@ async def get_all_payments(
                 j.created_at
             FROM jobs j
             WHERE j.client_id = :client_id
-            AND j.status IN ('quote_accepted', 'deposit_paid', 'job_completed')
+            AND j.status IN ('quote_accepted', 'deposit_paid', 'payment_pending', 'job_completed')
             ORDER BY j.created_at DESC
         """)
         
@@ -446,6 +446,8 @@ async def get_all_payments(
                 payment_status = "Deposit Payment Pending"
             elif job_status == "deposit_paid":
                 payment_status = "Deposit Paid"
+            elif job_status == "payment_pending":
+                payment_status = "Remaining Payment Pending"
             elif job_status == "job_completed":
                 payment_status = "Fully Paid"
             else:
@@ -455,15 +457,23 @@ async def get_all_payments(
             deposit_amount = float(r[5]) if r[5] else 0.0
             remaining_amount = float(r[6]) if r[6] else (quote_amount - deposit_amount)
             
-            payments.append({
+            payment_data = {
                 "job_id": r[0],
                 "property_address": r[1],
                 "service_type": service_type_name,
                 "quote_amount": quote_amount,
-                "deposit_amount": deposit_amount,
-                "remaining_amount": remaining_amount,
                 "status": payment_status
-            })
+            }
+            
+            # Only show deposit_amount if deposit is paid or job is completed
+            if job_status in ["deposit_paid", "payment_pending", "job_completed"]:
+                payment_data["deposit_amount"] = deposit_amount
+            
+            # Only show remaining_amount if payment is pending or job is completed
+            if job_status in ["payment_pending", "job_completed"]:
+                payment_data["remaining_amount"] = remaining_amount
+            
+            payments.append(payment_data)
         
         return payments
     except Exception as e:
