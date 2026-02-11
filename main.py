@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 # CRITICAL: Import ALL models BEFORE any database operations
@@ -59,7 +58,10 @@ app.include_router(pricing.router, prefix="/api")
 app.include_router(payment.router, prefix="/api")
 app.include_router(payment_success.router, prefix="/api")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+except RuntimeError:
+    pass
 
 @app.on_event("startup")
 def startup():
