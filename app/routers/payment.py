@@ -61,7 +61,7 @@ async def create_deposit_payment(
         payment_data = create_checkout_session(
             amount=deposit_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "deposit"},
-            success_url=f"https://ui-packers-y8cjd.ondigitalocean.app/payment/success?job_id={job_id}&type=deposit&session_id={{CHECKOUT_SESSION_ID}}",
+            success_url=f"https://ui-packers-y8cjd.ondigitalocean.app/static/stripe/success.html",
             cancel_url=f"https://ui-packers-y8cjd.ondigitalocean.app/jobs/{job_id}"
         )
         
