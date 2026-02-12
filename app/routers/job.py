@@ -47,9 +47,12 @@ async def create_request(
     if property_photos:
         for img in property_photos:
             if img.filename:
-                photo_url = storage.upload_client_job_photo(img.file, str(client.id), "temp_job", img.filename)
-                if photo_url:
-                    image_paths.append(photo_url)
+                try:
+                    photo_url = storage.upload_client_job_photo(img.file, str(client.id), "temp_job", img.filename)
+                    if photo_url:
+                        image_paths.append(photo_url)
+                except Exception as e:
+                    print(f"Failed to upload photo {img.filename}: {e}")
     
     # Geocode job address
     lat, lon = geocode_address(property_address)
@@ -65,7 +68,7 @@ async def create_request(
         property_address=property_address,
         preferred_date=preferred_date,
         preferred_time=preferred_time,
-        property_photos=",".join(image_paths) if image_paths else None,
+        property_photos=",".join(image_paths) if image_paths else "",
         additional_information=additional_information,
         status='job_created',
         latitude=lat,
@@ -671,12 +674,31 @@ async def get_job_tracking_details(
         except Exception as e:
             print(f"Error fetching crew details: {e}")
     
+    # Get before and after photos
+    before_photos = []
+    after_photos = []
+    try:
+        photo_results = db.execute(
+            text("SELECT photo_url, type FROM job_photos WHERE job_id = :job_id ORDER BY timestamp ASC"),
+            {"job_id": job_id}
+        ).fetchall()
+        
+        for photo in photo_results:
+            if photo[1] == "before":
+                before_photos.append(photo[0])
+            elif photo[1] == "after":
+                after_photos.append(photo[0])
+    except Exception as e:
+        print(f"Error fetching photos: {e}")
+    
     return {
         "job_id": job.id,
         "property_address": job.property_address,
         "status": display_status,
         "progress": progress_steps,
-        "crew_details": crew_details
+        "crew_details": crew_details,
+        "before_photos": before_photos,
+        "after_photos": after_photos
     }
 
 @router.get("/client/payment-requests", tags=["Client"], summary="Get Pending Payment Requests")
@@ -764,7 +786,7 @@ async def get_accepted_quotes(
     
     jobs = db.query(Job).filter(
         Job.client_id == str(client.id),
-        Job.status == "quote_accepted"
+        Job.status.in_(["quote_accepted", "deposit_paid", "crew_assigned", "crew_arrived", "before_photo", "clearance_in_progress", "after_photo", "work_completed", "job_verified", "payment_pending", "job_completed"])
     ).order_by(Job.updated_at.desc()).all()
     
     result = []

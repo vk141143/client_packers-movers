@@ -5,6 +5,10 @@ import os
 from dotenv import load_dotenv
 from typing import Optional
 import uuid
+import urllib3
+
+# Suppress SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
 
@@ -22,7 +26,8 @@ class UthoStorage:
             aws_secret_access_key=self.secret_key,
             endpoint_url=self.endpoint_url,
             region_name=self.region,
-            config=Config(signature_version='s3v4')
+            config=Config(signature_version='s3v4'),
+            verify=False  # Disable SSL verification for Utho
         )
     
     def upload_file(self, file_data, folder: str, filename: str) -> Optional[str]:

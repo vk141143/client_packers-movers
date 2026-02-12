@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.client import Client
@@ -8,15 +9,24 @@ from app.core.payment import create_checkout_session, verify_payment
 from pydantic import BaseModel
 from datetime import datetime
 from sqlalchemy import text
+import os
 
 router = APIRouter()
 
 class ConfirmPaymentRequest(BaseModel):
     session_id: str
 
+def get_base_url(request: Request = None) -> str:
+    """Get base URL for redirects - works in both local and production"""
+    if request:
+        return str(request.base_url).rstrip('/')
+    # Fallback to environment variable or production URL
+    return os.getenv("BASE_URL", "https://ui-packers-y8cjd.ondigitalocean.app")
+
 @router.post("/client/jobs/{job_id}/create-deposit-payment", tags=["Client Payment"])
 async def create_deposit_payment(
     job_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -58,11 +68,12 @@ async def create_deposit_payment(
         if not deposit_amount or deposit_amount <= 0:
             raise HTTPException(status_code=400, detail="Invalid deposit amount")
         
+        base_url = get_base_url(request)
         payment_data = create_checkout_session(
             amount=deposit_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "deposit"},
-            success_url=f"https://ui-packers-y8cjd.ondigitalocean.app/static/stripe/success.html",
-            cancel_url=f"https://ui-packers-y8cjd.ondigitalocean.app/jobs/{job_id}"
+            success_url=f"{base_url}/static/stripe/success.html?payment_success=true&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base_url}/jobs/{job_id}"
         )
         
         payment = Payment(
@@ -185,6 +196,7 @@ async def get_remaining_payment_details(
 @router.post("/client/jobs/{job_id}/pay-remaining", tags=["Client Payment"])
 async def create_remaining_payment_intent(
     job_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -217,11 +229,12 @@ async def create_remaining_payment_intent(
         if not remaining_amount or remaining_amount <= 0:
             raise HTTPException(status_code=400, detail="Invalid remaining amount")
         
+        base_url = get_base_url(request)
         payment_data = create_checkout_session(
             amount=remaining_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "remaining"},
-            success_url=f"https://ui-packers-y8cjd.ondigitalocean.app/payment/success?job_id={job_id}&type=remaining&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"https://ui-packers-y8cjd.ondigitalocean.app/jobs/{job_id}"
+            success_url=f"{base_url}/static/stripe/success.html?payment_success=true&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base_url}/jobs/{job_id}"
         )
         
         payment = Payment(

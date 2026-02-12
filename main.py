@@ -19,7 +19,7 @@ from app.models.payment import Payment
 from app.database.db import init_db, engine, Base
 
 # Import routers last
-from app.routers import auth, job, urgency_level, invoice, job_draft, pricing, service_type, waste_type, access_difficulty, payment, payment_success
+from app.routers import auth, job, urgency_level, invoice, job_draft, pricing, service_type, waste_type, access_difficulty, payment
 
 app = FastAPI(
     title="Emergency Property Clearance API",
@@ -56,12 +56,9 @@ app.include_router(access_difficulty.router, prefix="/api")
 app.include_router(invoice.router, prefix="/api")
 app.include_router(pricing.router, prefix="/api")
 app.include_router(payment.router, prefix="/api")
-app.include_router(payment_success.router, prefix="/api")
 
-try:
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-except RuntimeError:
-    pass
+# Mount static files AFTER all routers to avoid conflicts
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
 def startup():
