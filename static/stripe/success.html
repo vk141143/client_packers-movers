@@ -127,25 +127,42 @@
         const params = new URLSearchParams(window.location.search);
         const isSuccess = params.get('payment_success') === 'true';
         const isCanceled = params.get('payment_canceled') === 'true';
+        const sessionId = params.get('session_id');
         
-        if (isSuccess) {
+        // Get frontend URL from environment or use default
+        const FRONTEND_URL = 'http://localhost:5173'; // Change to your frontend URL
+        
+        if (isSuccess && sessionId) {
             document.body.classList.add('success');
             document.getElementById('successIcon').classList.remove('hidden');
             document.getElementById('message').textContent = 'Payment Successful';
-            document.getElementById('instruction').textContent = 'Go to your page and click on "I\'ve completed payment"';
+            document.getElementById('instruction').textContent = 'Redirecting to your dashboard...';
             document.getElementById('pageTitle').textContent = 'Payment Successful';
+            
+            // Auto-redirect to frontend after 2 seconds
+            setTimeout(() => {
+                window.location.href = `${FRONTEND_URL}/payments?session_id=${sessionId}&status=success`;
+            }, 2000);
         } else if (isCanceled) {
             document.body.classList.add('cancel');
             document.getElementById('cancelIcon').classList.remove('hidden');
             document.getElementById('message').textContent = 'Payment Cancelled';
-            document.getElementById('instruction').textContent = 'Failures are the stepping stones to success';
+            document.getElementById('instruction').textContent = 'Redirecting back...';
             document.getElementById('pageTitle').textContent = 'Payment Cancelled';
+            
+            setTimeout(() => {
+                window.location.href = `${FRONTEND_URL}/payments?status=cancelled`;
+            }, 2000);
         } else {
             document.body.classList.add('success');
             document.getElementById('successIcon').classList.remove('hidden');
             document.getElementById('message').textContent = 'Payment Successful';
-            document.getElementById('instruction').textContent = 'Go to your page and click on "I\'ve completed payment"';
+            document.getElementById('instruction').textContent = 'Redirecting to your dashboard...';
             document.getElementById('pageTitle').textContent = 'Payment Successful';
+            
+            setTimeout(() => {
+                window.location.href = `${FRONTEND_URL}/payments`;
+            }, 2000);
         }
     </script>
 </body>

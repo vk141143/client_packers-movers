@@ -16,12 +16,27 @@ router = APIRouter()
 class ConfirmPaymentRequest(BaseModel):
     session_id: str
 
-def get_base_url(request: Request = None) -> str:
-    """Get base URL for redirects - works in both local and production"""
-    if request:
-        return str(request.base_url).rstrip('/')
-    # Fallback to environment variable or production URL
-    return os.getenv("BASE_URL", "https://ui-packers-y8cjd.ondigitalocean.app")
+def get_frontend_url(request: Request) -> str:
+    """Get frontend URL from request origin - works for both local and production"""
+    # Get origin from request headers (where frontend is running)
+    origin = request.headers.get("origin")
+    
+    # Allowed frontend origins
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "https://ui-packers-y8cjd.ondigitalocean.app",
+        "https://client.voidworksgroup.co.uk",
+        "https://www.voidworksgroup.co.uk"
+    ]
+    
+    # Use origin if allowed, else fallback to production
+    if origin and origin in allowed_origins:
+        return origin
+    
+    # Fallback to production frontend URL
+    return "https://client.voidworksgroup.co.uk"
 
 @router.post("/client/jobs/{job_id}/create-deposit-payment", tags=["Client Payment"])
 async def create_deposit_payment(
@@ -68,12 +83,12 @@ async def create_deposit_payment(
         if not deposit_amount or deposit_amount <= 0:
             raise HTTPException(status_code=400, detail="Invalid deposit amount")
         
-        base_url = get_base_url(request)
+        frontend_url = get_frontend_url(request)
         payment_data = create_checkout_session(
             amount=deposit_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "deposit"},
-            success_url=f"{base_url}/static/stripe/success.html?payment_success=true&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{base_url}/jobs/{job_id}"
+            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{frontend_url}/payment/cancel"
         )
         
         payment = Payment(
@@ -229,12 +244,12 @@ async def create_remaining_payment_intent(
         if not remaining_amount or remaining_amount <= 0:
             raise HTTPException(status_code=400, detail="Invalid remaining amount")
         
-        base_url = get_base_url(request)
+        frontend_url = get_frontend_url(request)
         payment_data = create_checkout_session(
             amount=remaining_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "remaining"},
-            success_url=f"{base_url}/static/stripe/success.html?payment_success=true&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{base_url}/jobs/{job_id}"
+            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{frontend_url}/payment/cancel"
         )
         
         payment = Payment(
