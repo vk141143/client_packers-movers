@@ -28,7 +28,8 @@ def get_frontend_url(request: Request) -> str:
         "http://localhost:3000",
         "https://ui-packers-y8cjd.ondigitalocean.app",
         "https://client.voidworksgroup.co.uk",
-        "https://www.voidworksgroup.co.uk"
+        "https://www.voidworksgroup.co.uk",
+        "https://voidworksgroup.co.uk"
     ]
     
     # Use origin if allowed, else fallback to production
@@ -87,8 +88,8 @@ async def create_deposit_payment(
         payment_data = create_checkout_session(
             amount=deposit_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "deposit"},
-            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{frontend_url}/payment/cancel"
+            success_url=f"{frontend_url}/#/payments?session_id={{CHECKOUT_SESSION_ID}}&status=success",
+            cancel_url=f"{frontend_url}/#/payments?status=cancel"
         )
         
         payment = Payment(
@@ -248,8 +249,8 @@ async def create_remaining_payment_intent(
         payment_data = create_checkout_session(
             amount=remaining_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "remaining"},
-            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{frontend_url}/payment/cancel"
+            success_url=f"{frontend_url}/#/payments?session_id={{CHECKOUT_SESSION_ID}}&status=success",
+            cancel_url=f"{frontend_url}/#/payments?status=cancel"
         )
         
         payment = Payment(
