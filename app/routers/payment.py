@@ -88,7 +88,7 @@ async def create_deposit_payment(
         payment_data = create_checkout_session(
             amount=deposit_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "deposit"},
-            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=deposit",
+            success_url=f"{frontend_url}/client/payment?session_id={{CHECKOUT_SESSION_ID}}&type=deposit&status=success",
             cancel_url=f"{frontend_url}/client/payment?status=cancel"
         )
         
@@ -249,7 +249,7 @@ async def create_remaining_payment_intent(
         payment_data = create_checkout_session(
             amount=remaining_amount,
             metadata={"job_id": job_id, "client_id": str(client.id), "payment_type": "remaining"},
-            success_url=f"{frontend_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=remaining",
+            success_url=f"{frontend_url}/client/payment?session_id={{CHECKOUT_SESSION_ID}}&type=remaining&status=success",
             cancel_url=f"{frontend_url}/client/payment?status=cancel"
         )
         
